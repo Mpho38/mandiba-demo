@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-pTUpQvw5jjGXr/vxOzzYmB+FGVPaCZlDZ/Ti07UT7hU=' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://cdnjs.cloudflare.com; connect-src 'self' data: blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Mandiba Spaza Shop</title>
 <meta name="description" content="Order kotas, chicken, wings and more from Mandiba Spaza Shop, Maungani, next to Univen Gate.">
@@ -1219,20 +1221,21 @@ function fileToDataUrl(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(file); });
 }
 
-function loadScript(src, timeoutMs = 15000) {
+/* integrity: the file's published hash, so a tampered CDN copy is refused (Subresource Integrity). */
+function loadScript(src, timeoutMs = 15000, integrity = "") {
   return new Promise((resolve, reject) => {
     if ($(`script[src="${src}"]`)) { resolve(); return; }
     const s = document.createElement("script");
-    s.src = src; s.async = true; s.crossOrigin = "anonymous";
+    s.src = src; s.async = true; s.crossOrigin = "anonymous"; if (integrity) s.integrity = integrity;
     const t = setTimeout(() => reject(new Error("timeout")), timeoutMs);
     s.onload = () => { clearTimeout(t); resolve(); };
     s.onerror = () => { clearTimeout(t); reject(new Error("load failed")); };
     document.head.appendChild(s);
   });
 }
-function loadCss(href) {
+function loadCss(href, integrity = "") {
   if ($(`link[href="${href}"]`)) return;
-  const l = document.createElement("link"); l.rel = "stylesheet"; l.href = href; l.crossOrigin = "anonymous"; document.head.appendChild(l);
+  const l = document.createElement("link"); l.rel = "stylesheet"; l.href = href; l.crossOrigin = "anonymous"; if (integrity) l.integrity = integrity; document.head.appendChild(l);
 }
 
 function downloadText(filename, text, type = "text/csv") {
@@ -1623,9 +1626,12 @@ async function runReminders() {
 /* ---------------- maps (Leaflet + OpenStreetMap, with a drawn fallback) ---------------- */
 const LEAFLET_JS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
 const LEAFLET_CSS = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+// Published cdnjs hashes (checked 30 Sep 2026). Change them together with the version.
+const LEAFLET_JS_SRI = "sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==";
+const LEAFLET_CSS_SRI = "sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw==";
 let leafletReady = null;
 function ensureLeaflet() {
-  if (!leafletReady) { loadCss(LEAFLET_CSS); leafletReady = loadScript(LEAFLET_JS).then(() => window.L); }
+  if (!leafletReady) { loadCss(LEAFLET_CSS, LEAFLET_CSS_SRI); leafletReady = loadScript(LEAFLET_JS, 15000, LEAFLET_JS_SRI).then(() => window.L); }
   return leafletReady;
 }
 
@@ -2292,6 +2298,7 @@ Actions["drv-gps"] = () => { if (dx.gps != null) { stopGps(); refreshDriverFull(
 
 const ax = { stockTab: "overall", period: "today", purchase: null, take: {}, rec: null, menuSec: null, editItem: null };
 const TESSERACT_JS = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+const TESSERACT_SRI = "sha256-qOKZGNCYsrBuEBK9rv+0rsBEXF1WVHCQI+C9H0QqgOg="; // jsDelivr's published hash (checked 30 Sep 2026)
 
 function fmtQty(q, unit) {
   if (unit === "g" && q >= 1000) return (q / 1000).toFixed(q % 1000 ? 1 : 0) + " kg";
@@ -2524,7 +2531,7 @@ async function readSlip() {
   const p = ax.purchase;
   p.ocr = "Reading the slip… (the first time takes a little longer)"; rerenderPurchase();
   try {
-    await loadScript(TESSERACT_JS, 30000);
+    await loadScript(TESSERACT_JS, 30000, TESSERACT_SRI);
     const res = await window.Tesseract.recognize(p.slipPhoto, "eng");
     const lines = res.data.text.split("\n").map(s => s.trim()).filter(s => /[a-z]/i.test(s) && /\d/.test(s));
     const guess = lines.map(l => {
