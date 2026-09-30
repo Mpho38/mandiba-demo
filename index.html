@@ -14,17 +14,17 @@
   --bg:#F6F1EA; --surface:#FFFFFF; --sunk:#EEE6DC; --ink:#1B1512; --muted:#6D6058; --line:#E3D8CC;
   --black:#161211; --black-ink:#FBF6F0; --orange:#E48A2F; --orange-ink:#1D1105; --orange-soft:#FBE7D1;
   --red:#A1271D; --red-soft:#F8DEDA; --good:#1E7A46; --good-soft:#DCF1E4; --warn:#9A5B00; --warn-soft:#FBEBCB;
-  --info:#1D5C99; --info-soft:#DEEAF7; --shadow:0 8px 28px rgba(22,18,17,.14); --r:14px;
+  --info:#1D5C99; --info-soft:#DEEAF7; --red-fill:#A1271D; --good-fill:#1E7A46; --shadow:0 8px 28px rgba(22,18,17,.14); --r:14px;
   --f-display:"Archivo","Arial Black",Impact,system-ui,sans-serif; --f-body:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#110E0C; --surface:#1B1715; --sunk:#25201D; --ink:#F4EDE7; --muted:#A99C92; --line:#352E29;
-  --orange:#F09A45; --orange-ink:#1D1105; --orange-soft:#3A2614; --red:#E2584A; --red-soft:#3C1B17; --good:#4CC27E; --good-soft:#15301F;
+  --orange:#F09A45; --orange-ink:#1D1105; --orange-soft:#3A2614; --red:#F07366; --red-soft:#3C1B17; --red-fill:#B8392D; --good-fill:#1B6E3F; --good:#4CC27E; --good-soft:#15301F;
   --warn:#E6AF4F; --warn-soft:#352812; --info:#6FA7E6; --info-soft:#172A3E; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#110E0C; --surface:#1B1715; --sunk:#25201D; --ink:#F4EDE7; --muted:#A99C92; --line:#352E29;
-  --orange:#F09A45; --orange-ink:#1D1105; --orange-soft:#3A2614; --red:#E2584A; --red-soft:#3C1B17; --good:#4CC27E; --good-soft:#15301F;
+  --orange:#F09A45; --orange-ink:#1D1105; --orange-soft:#3A2614; --red:#F07366; --red-soft:#3C1B17; --red-fill:#B8392D; --good-fill:#1B6E3F; --good:#4CC27E; --good-soft:#15301F;
   --warn:#E6AF4F; --warn-soft:#352812; --info:#6FA7E6; --info-soft:#172A3E; --shadow:0 8px 28px rgba(0,0,0,.5); color-scheme:dark}
 
 *{box-sizing:border-box}
@@ -32,11 +32,13 @@
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);-webkit-tap-highlight-color:transparent;min-height:100vh}
 h1,h2,h3{margin:0;font-family:var(--f-display);letter-spacing:.005em;text-wrap:balance}
-h1{font-size:1.7rem;font-weight:900} h2{font-size:1.2rem;font-weight:800} h3{font-size:1rem;font-weight:800}
+h1{font-size:1.7rem;font-weight:900} h2,h1.h2{font-size:1.2rem;font-weight:800} h3{font-size:1rem;font-weight:800}
 p{margin:0}
 a{color:var(--info)}
 button,input,select,textarea{font:inherit;color:inherit}
 .num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.sheet-panel:focus{outline:none}
 .muted{color:var(--muted)} .small{font-size:.85rem} .tiny{font-size:.75rem}
 :focus-visible{outline:3px solid var(--orange);outline-offset:2px}
 .label{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
@@ -56,7 +58,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .nav{max-width:1120px;margin:0 auto;padding:0 16px 8px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
 .nav a{flex:0 0 auto;color:#d9cfc6;text-decoration:none;font-weight:600;font-size:.9rem;padding:8px 12px;border-radius:99px}
 .nav a.on{background:var(--orange);color:var(--orange-ink)}
-.nav a .count{background:var(--red);color:#fff;border-radius:99px;padding:0 6px;margin-left:5px;font-size:.72rem}
+.nav a .count{background:var(--red-fill);color:#fff;border-radius:99px;padding:0 6px;margin-left:5px;font-size:.72rem}
 
 main.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:18px 110px;display:flex;flex-direction:column;gap:18px}
 
@@ -69,7 +71,7 @@ main.wrap{max-width:1120px;margin:0 auto;padding-inline:16px;padding-block:18px 
 .btn.primary{background:var(--orange);border-color:var(--orange);color:var(--orange-ink)}
 .btn.dark{background:var(--black);border-color:var(--black);color:var(--black-ink)}
 .btn.danger{color:var(--red);border-color:var(--red)}
-.btn.good{background:var(--good);border-color:var(--good);color:#fff}
+.btn.good{background:var(--good-fill);border-color:var(--good-fill);color:#fff}
 .btn.ghost{background:transparent}
 .btn.sm{min-height:36px;padding:6px 11px;font-size:.86rem;border-radius:10px}
 .btn.block{width:100%}
@@ -132,7 +134,7 @@ textarea{min-height:90px;resize:vertical}
 .item .pr{font-weight:800;font-size:1.05rem;font-variant-numeric:tabular-nums}
 .item .add{width:36px;height:36px;border-radius:50%;background:var(--orange);color:var(--orange-ink);display:grid;place-items:center;font-weight:900;font-size:1.25rem}
 .item[aria-disabled="true"]{cursor:not-allowed} .item[aria-disabled="true"] .ph{filter:grayscale(1);opacity:.55}
-.soldout{position:absolute;left:10px;top:10px;background:var(--red);color:#fff;font-weight:800;font-size:.75rem;padding:4px 9px;border-radius:99px;letter-spacing:.04em}
+.soldout{position:absolute;left:10px;top:10px;background:var(--red-fill);color:#fff;font-weight:800;font-size:.75rem;padding:4px 9px;border-radius:99px;letter-spacing:.04em}
 .opts{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
 .opt{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px;cursor:pointer;text-align:left}
 .opt[aria-pressed="true"]{border-color:var(--orange);background:var(--orange-soft)}
@@ -171,7 +173,7 @@ textarea{min-height:90px;resize:vertical}
 @keyframes flash{50%{box-shadow:0 0 0 4px var(--orange)}}
 .oc ul{margin:0;padding-left:18px;font-size:.9rem}
 .oc ul .x{color:var(--muted);font-size:.8rem}
-.cash{background:var(--red);color:#fff;font-weight:800;border-radius:8px;padding:4px 9px;font-size:.82rem;align-self:flex-start}
+.cash{background:var(--red-fill);color:#fff;font-weight:800;border-radius:8px;padding:4px 9px;font-size:.82rem;align-self:flex-start}
 .tillgrid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
 .tillbtn{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:3px;min-height:76px}
 .tillbtn b{font-variant-numeric:tabular-nums}
@@ -206,7 +208,7 @@ table.tbl{border-collapse:collapse;width:100%;font-size:.88rem}
 .full .map{flex:1;height:auto;min-height:0}
 .toasts{position:fixed;left:0;right:0;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:80;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding-inline:16px}
 .toast{background:var(--black);color:var(--black-ink);padding:11px 16px;border-radius:12px;font-weight:600;box-shadow:var(--shadow);max-width:480px}
-.alertbar{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top,0px));transform:translate(-50%,-160%);z-index:90;width:min(560px,calc(100% - 24px));background:var(--red);color:#fff;border-radius:16px;padding:14px 16px;box-shadow:var(--shadow);display:flex;gap:12px;align-items:center;transition:transform .35s ease}
+.alertbar{position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top,0px));transform:translate(-50%,-160%);z-index:90;width:min(560px,calc(100% - 24px));background:var(--red-fill);color:#fff;border-radius:16px;padding:14px 16px;box-shadow:var(--shadow);display:flex;gap:12px;align-items:center;transition:transform .35s ease}
 .alertbar.show{transform:translate(-50%,0)}
 .alertbar.flash{animation:alertflash 1s steps(2) 6}
 @keyframes alertflash{50%{background:var(--orange);color:var(--orange-ink)}}
@@ -220,7 +222,7 @@ table.tbl{border-collapse:collapse;width:100%;font-size:.88rem}
 .avpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:10px}
 .avpick button{border:2px solid var(--line);background:var(--surface);border-radius:16px;padding:6px;cursor:pointer;display:grid;place-items:center}
 .avpick button[aria-pressed="true"]{border-color:var(--orange);background:var(--orange-soft)}
-.rec{width:64px;height:64px;border-radius:50%;border:0;background:var(--red);color:#fff;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
+.rec{width:64px;height:64px;border-radius:50%;border:0;background:var(--red-fill);color:#fff;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
 .rec.on{animation:pulse 1.2s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(161,39,29,.6)}100%{box-shadow:0 0 0 16px rgba(161,39,29,0)}}
 .foot{max-width:1120px;margin:0 auto;padding:0 16px 30px;color:var(--muted);font-size:.8rem;display:flex;gap:6px 16px;flex-wrap:wrap}
@@ -1218,7 +1220,7 @@ let alertTimer = null;
 /* A big banner at the top: {title, body, action: {label, hash}} */
 function showAlert({ title, body, action, tone = "red", sticky = 12000 }) {
   const el = $("#alertbar");
-  el.style.background = tone === "good" ? "var(--good)" : tone === "black" ? "var(--black)" : "";
+  el.style.background = tone === "good" ? "var(--good-fill)" : tone === "black" ? "var(--black)" : "";
   el.innerHTML = `<div style="flex:1;min-width:0"><b>${esc(title)}</b><span>${esc(body || "")}</span></div>
     ${action ? `<a class="btn sm" style="background:#fff;color:#161211;border:0" href="${esc(action.hash)}" data-act="alert-close">${esc(action.label)}</a>` : ""}
     <button class="btn sm ghost" style="color:inherit;border-color:rgba(255,255,255,.4)" data-act="alert-close" aria-label="Dismiss">✕</button>`;
@@ -1236,16 +1238,61 @@ function welcomeBanner(text) {
 }
 
 /* ---------------- sheet ---------------- */
-let sheetClose = null;
+let sheetClose = null, sheetReturn = null;
 function openSheet(html, onClose) {
   const s = $("#sheet");
-  s.innerHTML = `<div class="sheet-bg" data-act="sheet-close"></div><div class="sheet-panel" role="dialog" aria-modal="true">${html}</div>`;
+  if (s.hidden) sheetReturn = document.activeElement;
+  s.innerHTML = `<div class="sheet-bg" data-act="sheet-close"></div><div class="sheet-panel" role="dialog" aria-modal="true" tabindex="-1">${html}</div>`;
   s.hidden = false; sheetClose = onClose || null;
-  const f = s.querySelector("input,select,textarea,button:not([data-act=sheet-close])");
-  if (f && window.matchMedia("(min-width:720px)").matches) f.focus();
-  return s.querySelector(".sheet-panel");
+  const panel = s.querySelector(".sheet-panel"), head = panel.querySelector("h1,h2,h3,.label");
+  if (head) { head.id = head.id || "sheet-title"; panel.setAttribute("aria-labelledby", head.id); } else panel.setAttribute("aria-label", "Details");
+  hideEmoji(panel);
+  const f = panel.querySelector("input,select,textarea,button:not([data-act=sheet-close])");
+  (f && window.matchMedia("(min-width:720px)").matches ? f : panel).focus({ preventScroll: true });
+  return panel;
 }
-function closeSheet() { const s = $("#sheet"); s.hidden = true; s.innerHTML = ""; if (sheetClose) { const f = sheetClose; sheetClose = null; f(); } }
+function closeSheet() {
+  const s = $("#sheet"); s.hidden = true; s.innerHTML = "";
+  const back = sheetReturn; sheetReturn = null;
+  if (sheetClose) { const f = sheetClose; sheetClose = null; f(); }
+  if (!back || back === document.body) return;
+  /* The page may redraw and replace the opener, so find it again. */
+  const sel = focusKey(back);
+  setTimeout(() => { const el = back.isConnected ? back : sel && $(sel); if (el && !sheetOpen()) el.focus({ preventScroll: true }); }, 60);
+}
+/* A selector that finds the same button or link again after a redraw (null when it can't be pinned down). */
+function focusKey(el) {
+  if (!el || !el.closest || !el.closest("#view,#bar")) return null;
+  if (el.id) return "#" + CSS.escape(el.id);
+  const tag = el.tagName.toLowerCase(), attrs = ["act", "id", "to", "k", "v", "d", "pact"].filter(k => el.dataset[k] != null);
+  if (attrs.length) return tag + attrs.map(k => `[data-${k}="${CSS.escape(el.dataset[k])}"]`).join("");
+  if (tag === "a" && el.getAttribute("href")) return `a[href="${CSS.escape(el.getAttribute("href"))}"]`;
+  return null;
+}
+/* Keep Tab inside an open sheet. */
+function trapSheetFocus(ev) {
+  const panel = $("#sheet .sheet-panel");
+  if (!panel) return;
+  const items = $$("a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex='-1'])", panel).filter(el => el.offsetParent);
+  if (!items.length) { ev.preventDefault(); panel.focus(); return; }
+  const first = items[0], last = items[items.length - 1];
+  if (!panel.contains(document.activeElement)) { ev.preventDefault(); first.focus(); }
+  else if (ev.shiftKey && (document.activeElement === first || document.activeElement === panel)) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+}
+
+/* Emoji next to words are decoration: hide them from screen readers so "💳 Card" reads as "Card". */
+const EMOJI_RE = /\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*/u;
+function hideEmoji(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n =>
+    EMOJI_RE.test(n.nodeValue) && !n.parentElement.closest("[aria-hidden],svg,script,style") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const n of nodes) {
+    const parts = n.nodeValue.split(new RegExp("(" + EMOJI_RE.source + ")", "u")), frag = document.createDocumentFragment();
+    parts.forEach((t, i) => { if (!t) return; if (i % 2) { const sp = document.createElement("span"); sp.setAttribute("aria-hidden", "true"); sp.textContent = t; frag.appendChild(sp); } else frag.appendChild(document.createTextNode(t)); });
+    n.replaceWith(frag);
+  }
+}
 function sheetOpen() { return !$("#sheet").hidden; }
 
 /* Two-step confirm: first tap arms the button for 3 s. Returns true when confirmed. */
@@ -1998,7 +2045,7 @@ function employeeSoldOut() {
   const list = m.items.filter(i => !q || i.name.toLowerCase().includes(q));
   return `<h1>Sold out</h1><p class="muted">Ran out of something unexpectedly? Switch it off here. Customers see "Sold out" straight away. Items also sell out automatically when stock runs low.</p>
   <input type="search" placeholder="Find an item" data-input="so-q" value="${esc(ex.soQ)}" aria-label="Find an item">
-  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Status</th><th></th></tr></thead><tbody>${list.map(i => {
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Status</th><th><span class="sr">Actions</span></th></tr></thead><tbody>${list.map(i => {
     const autoOut = !i.soldOutManual && !m.avail(i);
     return `<tr><td>${esc(i.name)}<div class="tiny muted">${esc((m.sectionsById[i.sectionId] || {}).name || "")}</div></td>
       <td>${i.soldOutManual ? `<span class="tag t-red">Sold out (manual)</span>` : autoOut ? `<span class="tag t-warn">Sold out (stock)</span>` : `<span class="tag t-good">Available</span>`}</td>
@@ -2187,7 +2234,7 @@ function adminStock() {
 }
 
 function stockRows(list) {
-  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="n">In stock</th><th class="n">Warn at</th><th class="n">Cost / unit</th><th class="n">Sells for</th><th></th></tr></thead><tbody>
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="n">In stock</th><th class="n">Warn at</th><th class="n">Cost / unit</th><th class="n">Sells for</th><th><span class="sr">Actions</span></th></tr></thead><tbody>
   ${list.map(s => { const low = s.tracked && s.qty <= s.lowAt; return `<tr><td>${esc(s.name)} ${s.tracked ? "" : `<span class="tag t-mute">not counted</span>`}${low ? ` <span class="tag t-red">Low</span>` : ""}</td>
     <td class="n">${s.tracked ? esc(fmtQty(s.qty, s.unit)) : "-"}</td><td class="n">${s.tracked ? esc(fmtQty(s.lowAt, s.unit)) : "-"}</td>
     <td class="n">${s.unit === "g" ? (s.costPrice / 100).toFixed(2) + " R/g" : money(s.costPrice)}</td><td class="n">${s.sellPrice ? money(s.sellPrice) : "-"}</td>
@@ -2212,7 +2259,7 @@ function stockFood() {
 function stockPurchases() {
   const list = store.list("purchases").sort((a, b) => b.at - a.at);
   return `<div class="row"><button class="btn primary" data-act="purchase-new">+ Record a purchase</button></div>
-  ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>When</th><th>Supplier</th><th>How</th><th>Items</th><th class="n">Total</th><th></th></tr></thead><tbody>${list.map(p => `<tr>
+  ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>When</th><th>Supplier</th><th>How</th><th>Items</th><th class="n">Total</th><th><span class="sr">Actions</span></th></tr></thead><tbody>${list.map(p => `<tr>
     <td>${esc(fmtWhen(p.at))}</td><td>${esc(p.supplier || "-")}</td><td><span class="tag t-mute">${p.source === "voice" ? "🎤 said" : p.source === "photo" ? "📷 slip" : "⌨ typed"}</span></td>
     <td class="small">${p.lines.map(l => `${esc(fmtQty(l.qty, (store.get("stockItems", l.stockItemId) || {}).unit))} ${esc((store.get("stockItems", l.stockItemId) || {}).name || l.stockItemId)}`).join(", ")}</td>
     <td class="n">${money(p.total)}</td><td>${p.slipPhoto ? `<img class="thumb" src="${p.slipPhoto}" alt="Slip">` : ""}${p.voiceAudio ? `<audio controls src="${p.voiceAudio}" style="max-width:160px"></audio>` : ""}</td></tr>`).join("")}</tbody></table></div>`
@@ -2310,7 +2357,7 @@ function purchaseHtml() {
     ${p.unmatched.length ? `<div class="warnbox">Not understood (fix below or remove): ${p.unmatched.map(esc).join(" · ")}</div>` : ""}</div>` : ""}
   <div class="grid2"><div class="field"><label for="psup">Supplier</label><input id="psup" type="text" data-pin="supplier" value="${esc(p.supplier)}" placeholder="e.g. Shoprite Thohoyandou"></div>
     <div class="field"><label for="pdate">Date</label><input id="pdate" type="date" data-pin="date" value="${esc(p.date)}"></div></div>
-  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="n">Qty</th><th class="n">Cost each (R)</th><th></th></tr></thead><tbody>${p.lines.map((l, k) => {
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="n">Qty</th><th class="n">Cost each (R)</th><th><span class="sr">Remove</span></th></tr></thead><tbody>${p.lines.map((l, k) => {
     const s = store.get("stockItems", l.stockItemId);
     return `<tr class="${l.stockItemId ? "" : "unmatched"}"><td><select data-pline="${k}" data-f="stockItemId" aria-label="Item"><option value="">Choose…</option>${stock.map(x => `<option value="${x.id}" ${x.id === l.stockItemId ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>${l.phrase ? `<div class="tiny muted">"${esc(l.phrase)}"</div>` : ""}</td>
       <td class="n"><input type="number" step="any" min="0" inputmode="decimal" style="max-width:90px" data-pline="${k}" data-f="qty" value="${esc(l.qty)}" aria-label="Quantity"> <span class="tiny muted">${s ? esc(s.unit) : ""}</span></td>
@@ -2482,7 +2529,7 @@ function adminMenu() {
       <td class="n"><button class="btn sm" data-act="sec-hide" data-id="${s.id}">${s.hidden ? "Show" : "Hide"}</button>
       <button class="btn sm ghost" data-act="sec-move" data-id="${s.id}" data-d="-1" ${k ? "" : "disabled"} aria-label="Move up">↑</button><button class="btn sm ghost" data-act="sec-move" data-id="${s.id}" data-d="1" ${k < m.sections.length - 1 ? "" : "disabled"} aria-label="Move down">↓</button></td></tr>`).join("")}</tbody></table></div></div>
   <div class="row between"><h2>${esc((m.sectionsById[sec] || {}).name || "")}</h2><button class="btn primary" data-act="item-new" data-id="${sec}">+ Add item</button></div>
-  <div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Item</th><th class="n">Price</th><th>Status</th><th></th></tr></thead><tbody>${items.map(i => `<tr>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th><span class="sr">Photo</span></th><th>Item</th><th class="n">Price</th><th>Status</th><th><span class="sr">Actions</span></th></tr></thead><tbody>${items.map(i => `<tr>
     <td><img class="thumb" src="${itemImage(i)}" alt=""></td><td><b>${esc(i.name)}</b><div class="tiny muted">${esc(i.description || "")}</div></td><td class="n">${money(i.price)}</td>
     <td>${i.hidden ? `<span class="tag t-red">Hidden</span>` : i.soldOutManual ? `<span class="tag t-warn">Sold out</span>` : !m.avail(i) ? `<span class="tag t-warn">Out of stock</span>` : `<span class="tag t-good">On sale</span>`}</td>
     <td class="n"><button class="btn sm" data-act="item-edit" data-id="${i.id}">Edit</button> <button class="btn sm" data-act="item-hide" data-id="${i.id}">${i.hidden ? "Show" : "Hide"}</button></td></tr>`).join("") || `<tr><td colspan="5" class="empty">No items in this section.</td></tr>`}</tbody></table></div>`;
@@ -2565,10 +2612,10 @@ function adminPeople() {
   const users = store.list("users"), staff = users.filter(u => u.role !== "customer").sort((a, b) => a.role.localeCompare(b.role)), custs = users.filter(u => u.role === "customer");
   return `<h1>People</h1>
   <div class="card"><div class="row between"><span class="label">Staff</span><button class="btn primary sm" data-act="staff-new">+ Add employee or driver</button></div>
-  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Username</th><th>Phone</th><th>Last sign-in</th><th></th></tr></thead><tbody>${staff.map(u => `<tr>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Username</th><th>Phone</th><th>Last sign-in</th><th><span class="sr">Actions</span></th></tr></thead><tbody>${staff.map(u => `<tr>
     <td>${esc(u.displayName)} ${u.active ? "" : `<span class="tag t-red">Off</span>`}${u.mustChangeSecret ? ` <span class="tag t-warn">New password pending</span>` : ""}</td><td>${esc(u.role)}</td><td>@${esc(u.username)}</td><td class="num">${esc(formatPhone(u.phone))}</td><td class="small">${u.lastLoginAt ? esc(fmtWhen(u.lastLoginAt)) : "never"}</td>
     <td class="n">${u.role === "admin" ? "" : `<button class="btn sm" data-act="staff-reset" data-id="${u.id}">Reset password</button> <button class="btn sm ${u.active ? "danger" : "good"}" data-act="staff-active" data-id="${u.id}" data-v="${u.active ? "0" : "1"}">${u.active ? "Deactivate" : "Activate"}</button>`}</td></tr>`).join("")}</tbody></table></div></div>
-  <div class="card"><span class="label">Customers (${custs.length})</span><div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Name</th><th>Phone</th><th class="n">Orders</th></tr></thead><tbody>${custs.map(u => `<tr><td>${avatarSvg(u.avatar, 30)}</td><td>${esc(u.displayName)} <span class="tiny muted">@${esc(u.username)}</span></td><td class="num">${esc(formatPhone(u.phone))}</td><td class="n">${store.list("orders", o => o.customerId === u.id).length}</td></tr>`).join("")}</tbody></table></div></div>`;
+  <div class="card"><span class="label">Customers (${custs.length})</span><div class="tbl-wrap"><table class="tbl"><thead><tr><th><span class="sr">Avatar</span></th><th>Name</th><th>Phone</th><th class="n">Orders</th></tr></thead><tbody>${custs.map(u => `<tr><td>${avatarSvg(u.avatar, 30)}</td><td>${esc(u.displayName)} <span class="tiny muted">@${esc(u.username)}</span></td><td class="num">${esc(formatPhone(u.phone))}</td><td class="n">${store.list("orders", o => o.customerId === u.id).length}</td></tr>`).join("")}</tbody></table></div></div>`;
 }
 
 function openStaffForm() {
@@ -2638,7 +2685,7 @@ function adminLog() {
 function adminOrders() {
   const list = store.list("orders").sort((a, b) => b.createdAt - a.createdAt).slice(0, 100);
   return `<h1>All orders</h1><p class="muted">Every order stays here permanently, including delivered and cancelled ones.</p>
-  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Customer</th><th>When</th><th>Type</th><th class="n">Total</th><th>Payment</th><th>Status</th><th></th></tr></thead><tbody>${list.map(o => `<tr>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Order</th><th>Customer</th><th>When</th><th>Type</th><th class="n">Total</th><th>Payment</th><th>Status</th><th><span class="sr">Actions</span></th></tr></thead><tbody>${list.map(o => `<tr>
     <td><b>${esc(o.number)}</b></td><td>${esc(o.customerName)}</td><td class="small">${esc(fmtWhen(o.createdAt))}</td><td>${o.fulfilment === "delivery" ? "Delivery" : "Collection"}</td><td class="n">${money(o.total)}${o.tip ? `<div class="tiny muted">tip ${money(o.tip)}</div>` : ""}</td>
     <td class="small">${esc(o.payment.method)} · ${esc(o.payment.status.replace("_", " "))}</td><td><span class="tag ${o.status === "cancelled" ? "t-red" : TERMINAL.includes(o.status) ? "t-good" : "t-orange"}">${esc(STATUS_LABEL[o.status])}</span></td>
     <td class="n">${nextStatuses(o, "admin").includes("cancelled") ? `<button class="btn sm danger" data-act="cancel-order" data-id="${o.id}">Cancel</button>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
@@ -2756,7 +2803,7 @@ function applyTheme(t) { if (t === "auto") delete document.documentElement.datas
 function startScreen() {
   const s = settings(), d = SEED.demo;
   const cust = d.customers[0], emp = d.staff.find(x => x.role === "employee"), drv = d.staff.find(x => x.role === "driver"), adm = d.staff.find(x => x.role === "admin");
-  const roleBtn = (role, icon, text) => `<button class="role" data-act="to-login" data-id="${role}"><span class="ic">${icon}</span><span><b>${ROLE_LABEL[role]}</b><span class="small muted">${text}</span></span></button>`;
+  const roleBtn = (role, icon, text) => `<button class="role" data-act="to-login" data-id="${role}"><span class="ic" aria-hidden="true">${icon}</span><span><b>${ROLE_LABEL[role]}</b><span class="small muted">${text}</span></span></button>`;
   return `<section class="hero"><span class="label" style="color:var(--orange)">Mandiba Spaza Shop · Maungani</span>
     <h1>Kotas, chicken & wings, straight to your res.</h1>
     <p>Order the full Mandiba menu, pay by card, EFT or cash, and watch your food come to you. Delivery around Univen for ${money(s.deliveryFee)}.</p>
@@ -2787,14 +2834,14 @@ function demoCreds(role) {
 function loginScreen(role) {
   if (!ROLE_LABEL[role]) { setTimeout(() => go("#/"), 0); return ""; }
   const withPhone = role === "customer" || role === "employee", isCust = role === "customer";
-  if (lx.pending) return `<form class="card auth" id="codeform"><h2>Administrator: second check</h2>
+  if (lx.pending) return `<form class="card auth" id="codeform"><h1 class="h2">Administrator: second check</h1>
     <p class="muted">Enter the 6-digit code from your authenticator app.</p><p class="note small">Demo: the current code is on the start page (it changes every 30 seconds).</p>
     <div class="field"><label for="code">6-digit code</label><input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>
     ${lx.error ? `<p class="err">${esc(lx.error)}</p>` : ""}<button class="btn primary block" ${lx.busy ? "disabled" : ""}>Verify</button>
     <button type="button" class="link small" data-act="code-cancel" style="align-self:center">Back to password</button></form>`;
   const signup = isCust && lx.tab === "signup";
   return `<form class="card auth" id="loginform" autocomplete="off">
-    <div class="row between"><h2>${ROLE_LABEL[role]} ${signup ? "sign-up" : "sign-in"}</h2><a class="small" href="#/">Change role</a></div>
+    <div class="row between"><h1 class="h2">${ROLE_LABEL[role]} ${signup ? "sign-up" : "sign-in"}</h1><a class="small" href="#/">Change role</a></div>
     ${isCust ? `<div class="seg"><button type="button" data-act="login-tab" data-id="signin" aria-pressed="${!signup}">Sign in</button><button type="button" data-act="login-tab" data-id="signup" aria-pressed="${signup}">Create account</button></div>` : ""}
     ${signup ? `<div class="field"><label for="dn">Your name</label><input id="dn" name="displayName" type="text" maxlength="30" required></div>` : ""}
     <div class="field"><label for="un">Username</label><input id="un" name="username" type="text" autocapitalize="none" autocomplete="username" required></div>
@@ -2842,7 +2889,7 @@ function signedIn(r) {
 }
 
 function changeSecretScreen() {
-  return `<form class="card auth" id="chgform"><h2>Choose your own password</h2><p class="muted">Your admin gave you a temporary password. Pick a new one only you know.</p>
+  return `<form class="card auth" id="chgform"><h1 class="h2">Choose your own password</h1><p class="muted">Your admin gave you a temporary password. Pick a new one only you know.</p>
     <div class="field"><label for="n1">New password</label><input id="n1" name="a" type="password" autocomplete="new-password" required></div>
     <div class="field"><label for="n2">Type it again</label><input id="n2" name="b" type="password" autocomplete="new-password" required></div>
     <p class="small muted">At least 10 characters, with letters and numbers.</p>${lx.error ? `<p class="err">${esc(lx.error)}</p>` : ""}<button class="btn primary block">Save password</button></form>`;
@@ -2864,7 +2911,8 @@ function renderApp(opts = {}) {
   App.user = currentUser(store);
   const r = parseRoute();
   let focus = null;
-  if (opts.keepFocus) { const a = document.activeElement; if (a && a.dataset && a.dataset.input) focus = { input: a.dataset.input, k: a.dataset.k, id: a.dataset.id, pos: a.selectionStart }; }
+  let focusSel = null;
+  if (opts.keepFocus) { const a = document.activeElement; if (a && a.dataset && a.dataset.input) focus = { input: a.dataset.input, k: a.dataset.k, id: a.dataset.id, pos: a.selectionStart }; else focusSel = focusKey(a); }
   let html = "", after = null, area = r.area, page = r.page;
   if (!r.area) { if (App.user) { go(HOME[App.user.role]); return; } html = startScreen(); }
   else if (r.area === "login") {
@@ -2885,6 +2933,7 @@ function renderApp(opts = {}) {
   } else { go("#/"); return; }
   renderBar(area, page);
   $("#view").innerHTML = html;
+  hideEmoji($("#view"));
   if (after) after();
   updateCartBar();
   if (focus) {
@@ -2892,6 +2941,8 @@ function renderApp(opts = {}) {
     const el = $(sel);
     if (el) { el.focus(); try { if (focus.pos != null) el.setSelectionRange(focus.pos, focus.pos); } catch (e) { /* number inputs */ } }
   }
+  /* Keep keyboard users on the same button or link after a background redraw. */
+  if (focusSel && !sheetOpen()) { const el = $(focusSel); if (el) el.focus({ preventScroll: true }); }
   document.title = App.user ? `Mandiba · ${ROLE_LABEL[App.user.role]}` : "Mandiba Spaza Shop";
 }
 
@@ -2948,7 +2999,7 @@ document.addEventListener("click", ev => {
 document.addEventListener("input", ev => { const el = ev.target; if (el.dataset && el.dataset.input && Inputs[el.dataset.input]) Inputs[el.dataset.input](el); });
 document.addEventListener("change", ev => { const el = ev.target; if (el.dataset && el.dataset.actChange && Changes[el.dataset.actChange]) Promise.resolve(Changes[el.dataset.actChange](el)).catch(e => toast(e.message)); });
 document.addEventListener("focusout", () => { setTimeout(() => { if (deferred) { deferred = false; scheduleRender(); } }, 50); });
-document.addEventListener("keydown", ev => { if (ev.key === "Escape") { if (sheetOpen()) closeSheet(); else if (dx.fullId) closeDriverFull(); } });
+document.addEventListener("keydown", ev => { if (ev.key === "Tab" && sheetOpen()) trapSheetFocus(ev); if (ev.key === "Escape") { if (sheetOpen()) closeSheet(); else if (dx.fullId) closeDriverFull(); } });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && App.booted) scheduleRender(); });
 window.addEventListener("hashchange", () => { if (sheetOpen()) closeSheet(); if (dx.fullId) closeDriverFull(); lx.error = ""; window.scrollTo(0, 0); renderApp(); });
 
