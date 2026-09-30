@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-h90UhTygl4XGdmkm6iWodjVZ2s+P3G1m9jxAwNiYfso=' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://cdnjs.cloudflare.com; connect-src 'self' data: blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-KJ+fXMfkR0sfQLrYD9HAP/aMgfJ0sVvzDgH0j2hoNuA=' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://cdnjs.cloudflare.com; connect-src 'self' data: blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Mandiba Spaza Shop</title>
@@ -1285,8 +1285,9 @@ function browserNotify(title, body) {
 
 let alertTimer = null;
 /* A big banner at the top: {title, body, action: {label, hash}} */
-function showAlert({ title, body, action, tone = "red", sticky = 12000 }) {
+function showAlert({ title, body, action, tone = "red", sticky = 12000, kind = "" }) {
   const el = $("#alertbar");
+  el.dataset.kind = kind; // "order" alerts are cleared when leaving the employee side (main.js)
   el.style.background = tone === "good" ? "var(--good-fill)" : tone === "black" ? "var(--black)" : "";
   el.innerHTML = `<div style="flex:1;min-width:0"><b>${esc(title)}</b><span>${esc(body || "")}</span></div>
     ${action ? `<a class="btn sm" style="background:#fff;color:#161211;border:0" href="${esc(action.hash)}" data-act="alert-close">${esc(action.label)}</a>` : ""}
@@ -3204,6 +3205,8 @@ function renderApp(opts = {}) {
     }
   } else { go("#/"); return; }
   renderBar(area, page);
+  const bar = $("#alertbar");
+  if (bar.dataset.kind === "order" && !onEmployeeSide()) bar.classList.remove("show"); // left the employee side
   const route = location.hash || "#/";
   if (App.renderedRoute) saveDrafts(App.renderedRoute);
   $("#view").innerHTML = html;
@@ -3236,23 +3239,30 @@ function scheduleRender() {
 }
 
 /* ---------------- live alerts ---------------- */
+// New-order and "still waiting" alerts belong to the kitchen: only a signed-in employee, or the employee sign-in
+// screen (so a new order is still noticed before anyone signs in). Customers, drivers, the admin and the start
+// screen never see them.
+function onEmployeeSide() {
+  return App.user ? App.user.role === "employee" : (location.hash || "#/").startsWith("#/login/employee");
+}
+
 function handleNotifications() {
   const all = store.list("notifications").sort((a, b) => a.at - b.at);
   const fresh = all.filter(n => !seenNotes.has(n.id));
   for (const n of fresh) seenNotes.add(n.id);
   const u = App.user;
-  if (u && u.role === "customer") return;
+  if (!onEmployeeSide()) return;
   const latest = {};
   for (const n of fresh) if (["new_order", "order_reminder"].includes(n.type)) latest[n.orderId] = n; // one alert per order
   for (const n of Object.values(latest)) {
     if (Date.now() - n.at > 5 * 60000) continue;
     const o = store.get("orders", n.orderId);
     if (!o || o.status !== "received") continue;
-    const staff = u && (u.role === "employee" || u.role === "admin");
+    const staff = !!u; // past the check above, a signed-in user here is always an employee
     const kind = o.fulfilment === "delivery" ? "Delivery" : "Collection";
     const title = n.type === "order_reminder" ? `Still waiting: ${o.number}` : `New order ${o.number}`;
     const body = staff ? `${money(o.total)} · ${kind} · ${o.customerName}` : `${money(o.total)} · ${kind}. Sign in to view`;
-    showAlert({ title, body, action: staff ? { label: "Open board", hash: HOME[u.role] } : { label: "Sign in", hash: "#/login/employee" } });
+    showAlert({ title, body, kind: "order", action: staff ? { label: "Open board", hash: HOME[u.role] } : { label: "Sign in", hash: "#/login/employee" } });
     beep(); browserNotify(title, body);
   }
 }
