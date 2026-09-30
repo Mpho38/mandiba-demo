@@ -222,6 +222,10 @@ table.tbl{border-collapse:collapse;width:100%;font-size:.88rem}
 .avpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:10px}
 .avpick button{border:2px solid var(--line);background:var(--surface);border-radius:16px;padding:6px;cursor:pointer;display:grid;place-items:center}
 .avpick button[aria-pressed="true"]{border-color:var(--orange);background:var(--orange-soft)}
+.smsdemo{background:var(--info-soft);border:1px dashed var(--info);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.smsdemo .code{font-size:1.15rem;letter-spacing:.12em}
+.steps2{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.step{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
 .rec{width:64px;height:64px;border-radius:50%;border:0;background:var(--red-fill);color:#fff;display:grid;place-items:center;cursor:pointer;flex:0 0 auto}
 .rec.on{animation:pulse 1.2s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(161,39,29,.6)}100%{box-shadow:0 0 0 16px rgba(161,39,29,0)}}
@@ -838,6 +842,9 @@ if (typeof module !== "undefined" && module.exports) module.exports = {
 const SEED_VERSION = 1;
 const ALL_COLLECTIONS = ["users", "menuSections", "menuItems", "optionGroups", "stockItems", "stockMovements", "purchases", "orders",
   "locations", "tillSales", "platterRequests", "notifications", "settings", "counters", "meta"];
+/* Up to 3 owner/admin numbers that can receive the admin sign-in code. Demo: one placeholder number (the SMS is simulated on screen).
+   Before going live, replace with the owners' real numbers in Admin > Settings. */
+const DEFAULT_ADMIN_PHONES = [{ name: "Owner 1 (demo)", phone: "+27600000031" }];
 const DEFAULT_RES_POINT = { lat: -22.9800, lng: 30.4380 }; // ~950 m from the shop, inside Univen
 
 function defaultSettings(demo) {
@@ -848,6 +855,7 @@ function defaultSettings(demo) {
       phones: ["+27825865126", "+27728532136"], social: "@Mandiba_spaza_shop" },
     shopLocation: { lat: demo.shopLocation.lat, lng: demo.shopLocation.lng },
     notify: { shopPhone: "+27715306634", remindEveryMin: 2, smsBackupAfterSec: 60 },
+    adminPhones: DEFAULT_ADMIN_PHONES.map(x => ({ ...x })),
   };
 }
 
@@ -923,12 +931,14 @@ const SESSION_KEY = "mandiba.session";
 const IDLE_LIMIT = { customer: 12 * 3600e3, employee: 8 * 3600e3, driver: 8 * 3600e3, admin: 8 * 3600e3 };
 const GENERIC = {
   customer: "Username, phone or PIN is incorrect.",
-  employee: "Username, phone or password is incorrect.",
-  driver: "Username or password is incorrect.",
+  employee: "Phone number or password is incorrect.",
+  driver: "Phone number or password is incorrect.",
   admin: "Username or password is incorrect.",
 };
 const USERNAME_RE = /^[a-z0-9_.]{3,20}$/;
-const pendingAdmin = {}; // pendingId -> {userId, fails}
+const pendingAdmin = {}; // pendingId -> {userId, fails, code, phone, expires}
+const ADMIN_CODE_MINUTES = 5;
+const STAFF_ROLES = ["employee", "driver"];
 
 function pinProblem(pin) {
   if (!/^\d{4}$/.test(pin)) return "Your PIN must be exactly 4 digits.";
@@ -939,7 +949,7 @@ function pinProblem(pin) {
 function passwordProblem(pw, username) {
   if (String(pw).length < 10) return "Use at least 10 characters.";
   if (!/[a-z]/i.test(pw) || !/\d/.test(pw)) return "Use at least one letter and one number.";
-  if (pw.toLowerCase() === "password" || (username && pw.toLowerCase().includes(username.toLowerCase()))) return "Don't use your username or the word \"password\".";
+  if (pw.toLowerCase() === "password" || (username && username.length >= 3 && pw.toLowerCase().includes(username.toLowerCase()))) return "Don't use your name, username or the word \"password\".";
   return null;
 }
 
@@ -1006,15 +1016,21 @@ async function signUpCustomer(store, { username, displayName, phone, pin, avatar
   return { ok: true, user, firstTime: true };
 }
 
-/* fields: {username, phone?, secret}. Returns {ok, user, needCode, pendingId, mustChange, returning} or {ok:false, error}. */
+/* Employees and drivers sign in with their cellphone number, which is unique among staff. */
+function findStaffByPhone(store, phone) {
+  const ph = normalizePhone(phone);
+  return ph ? store.list("users").find(x => x.role !== "customer" && x.phone === ph) || null : null;
+}
+
+/* fields: {username?, phone?, secret}. Returns {ok, user, needCode, pendingId, mustChange, returning} or {ok:false, error}. */
 async function signIn(store, role, fields) {
   const generic = GENERIC[role];
-  const user = findUserByName(store, fields.username);
+  const user = STAFF_ROLES.includes(role) ? findStaffByPhone(store, fields.phone) : findUserByName(store, fields.username);
   const candidate = user && user.role === role ? user : null;
   if (!candidate) { await hashSecret(String(fields.secret || "x"), "AAAAAAAAAAAAAAAAAAAAAA==", 20000); return { ok: false, error: generic }; }
   if (candidate.lockedUntil && candidate.lockedUntil > Date.now()) return { ok: false, error: generic + " Too many attempts: try again later." };
   let good = !!candidate.active;
-  if (role === "customer" || role === "employee") good = good && normalizePhone(fields.phone) === candidate.phone;
+  if (role === "customer") good = good && normalizePhone(fields.phone) === candidate.phone;
   const secretOk = await verifySecret(String(fields.secret || ""), candidate);
   if (!(good && secretOk)) { await recordFailure(store, candidate); return { ok: false, error: generic }; }
   await store.transaction(tx => { const u = tx.get("users", candidate.id); u.failedAttempts = 0; u.lockedUntil = null; tx.put("users", u); });
@@ -1033,11 +1049,28 @@ async function finishSignIn(store, user) {
   return { ok: true, user, returning, mustChange: !!user.mustChangeSecret };
 }
 
+/* The admin's second check: a one-time 6-digit code sent by SMS to one of the owners' numbers (settings.adminPhones).
+   Demo: there is no SMS server, so the code comes back here and is shown on screen as a simulated SMS. */
+function adminPhones(s) {
+  return (s && s.adminPhones && s.adminPhones.length ? s.adminPhones : DEFAULT_ADMIN_PHONES).filter(x => x && x.phone).slice(0, 3);
+}
+function sendAdminCode(store, pendingId, index) {
+  const p = pendingAdmin[pendingId];
+  if (!p) return { ok: false, error: "Please sign in again.", restart: true };
+  const target = adminPhones(store.get("settings", "shop"))[index | 0];
+  if (!target) return { ok: false, error: "Choose one of the numbers." };
+  const n = new Uint32Array(1); crypto.getRandomValues(n);
+  p.code = String(n[0] % 1000000).padStart(6, "0"); p.phone = target.phone; p.expires = Date.now() + ADMIN_CODE_MINUTES * 60000;
+  return { ok: true, phone: target.phone, name: target.name, demoCode: p.code, minutes: ADMIN_CODE_MINUTES };
+}
+
 async function verifyAdminCode(store, pendingId, code) {
   const p = pendingAdmin[pendingId];
   if (!p) return { ok: false, error: "Please sign in again.", restart: true };
+  if (!p.code) return { ok: false, error: "Send yourself a code first." };
+  if (Date.now() > p.expires) { p.code = null; return { ok: false, error: "That code has expired. Send a new one.", expired: true }; }
   const user = store.get("users", p.userId);
-  if (user && user.totpSecret && await verifyTotp(code, user.totpSecret, Date.now())) {
+  if (user && String(code || "").trim() === p.code) {
     delete pendingAdmin[pendingId];
     return finishSignIn(store, user);
   }
@@ -1057,33 +1090,52 @@ async function changeOwnSecret(store, newSecret) {
   return { ok: true };
 }
 
-async function createStaff(store, { role, username, displayName, phone, password }) {
+/* The admin types the name and number; the new employee or driver types their own password on the admin's phone. */
+async function createStaff(store, { role, displayName, phone, password, password2 }) {
   requireRole(store, "admin");
-  if (!["employee", "driver"].includes(role)) return { ok: false, error: "Choose employee or driver." };
-  const uname = String(username || "").trim().toLowerCase();
-  if (!USERNAME_RE.test(uname)) return { ok: false, error: "Usernames are 3–20 characters: letters, numbers, dots or underscores." };
-  if (findUserByName(store, uname)) return { ok: false, error: "That username is taken." };
+  if (!STAFF_ROLES.includes(role)) return { ok: false, error: "Choose employee or driver." };
+  const name = String(displayName || "").trim();
+  if (name.length < 2) return { ok: false, error: "Type their full name." };
   const ph = normalizePhone(phone);
-  if (!ph) return { ok: false, error: "Enter a valid cellphone number." };
-  const pw = passwordProblem(password, uname);
-  if (pw) return { ok: false, error: "Temporary password: " + pw };
+  if (!ph) return { ok: false, error: "Enter a valid cellphone number, e.g. 071 234 5678." };
+  if (findStaffByPhone(store, ph)) return { ok: false, error: "A staff member already uses that number." };
+  const pw = passwordProblem(password, name.split(/\s+/)[0]);
+  if (pw) return { ok: false, error: "Password: " + pw };
+  if (password !== password2) return { ok: false, error: "The two passwords don't match." };
+  const uname = "staff" + ph.slice(-9);
   const salt = randomSaltB64();
-  const user = { id: randomId("usr"), role, username: uname, displayName: String(displayName || "").trim() || uname, phone: ph, avatar: role === "driver" ? 9 : 5,
+  const user = { id: randomId("usr"), role, username: uname, displayName: name, phone: ph, avatar: role === "driver" ? 9 : 5,
     secretSalt: salt, secretIter: SECRET_ITERATIONS, secretHash: await hashSecret(password, salt), totpSecret: null, failedAttempts: 0, lockedUntil: null,
-    mustChangeSecret: true, active: true, createdAt: Date.now(), lastLoginAt: null, returning: true };
-  await store.put("users", user);
+    mustChangeSecret: false, active: true, createdAt: Date.now(), lastLoginAt: null, returning: true };
+  await store.transaction(tx => {
+    if (tx.list("users").some(x => x.role !== "customer" && x.phone === ph)) throw new Error("A staff member already uses that number.");
+    tx.put("users", user);
+  });
   return { ok: true, user };
 }
 
-async function resetStaffSecret(store, userId, tempPassword) {
+/* Forgotten password: the staff member types a new one on the admin's phone. */
+async function resetStaffSecret(store, userId, password, password2) {
   requireRole(store, "admin");
   const u = store.get("users", userId);
-  if (!u || u.role === "customer" || u.role === "admin") return { ok: false, error: "Only employee and driver passwords can be reset here." };
-  const pw = passwordProblem(tempPassword, u.username);
-  if (pw) return { ok: false, error: "Temporary password: " + pw };
-  const salt = randomSaltB64(), hash = await hashSecret(tempPassword, salt);
-  await store.transaction(tx => { const x = tx.get("users", userId); Object.assign(x, { secretSalt: salt, secretIter: SECRET_ITERATIONS, secretHash: hash, mustChangeSecret: true, failedAttempts: 0, lockedUntil: null }); tx.put("users", x); });
+  if (!u || !STAFF_ROLES.includes(u.role)) return { ok: false, error: "Only employee and driver passwords can be changed here." };
+  const pw = passwordProblem(password, u.displayName.split(/\s+/)[0]);
+  if (pw) return { ok: false, error: "Password: " + pw };
+  if (password !== password2) return { ok: false, error: "The two passwords don't match." };
+  const salt = randomSaltB64(), hash = await hashSecret(password, salt);
+  await store.transaction(tx => { const x = tx.get("users", userId); Object.assign(x, { secretSalt: salt, secretIter: SECRET_ITERATIONS, secretHash: hash, mustChangeSecret: false, failedAttempts: 0, lockedUntil: null }); tx.put("users", x); });
   return { ok: true };
+}
+
+/* Removes an employee or driver for good. Their past orders keep the name that was on them. */
+async function deleteStaff(store, userId) {
+  requireRole(store, "admin");
+  const u = store.get("users", userId);
+  if (!u || !STAFF_ROLES.includes(u.role)) return { ok: false, error: "Only employees and drivers can be deleted here." };
+  if (store.list("orders", o => o.driverId === userId && ["with_driver", "on_the_way"].includes(o.status)).length)
+    return { ok: false, error: u.displayName + " still has a delivery on the go. Wait until it's delivered." };
+  await store.remove("users", userId);
+  return { ok: true, user: u };
 }
 
 async function setUserActive(store, userId, active) {
@@ -1308,6 +1360,28 @@ function formData(form) {
   for (const el of form.elements) if (el.name) o[el.name] = el.type === "checkbox" ? el.checked : el.value;
   return o;
 }
+
+/* Forms marked data-keep hold on to what was typed when the page redraws (an error, picking an avatar, a live update).
+   Drafts live in memory only, per page, and are dropped on sign-in, sign-out and after a successful save. */
+const drafts = {};
+function saveDrafts(route) {
+  for (const f of $$("form[data-keep]", $("#view"))) {
+    const d = drafts[route + "|" + f.id] = {};
+    for (const el of f.elements) if (el.name) d[el.name + (el.type === "radio" ? "=" + el.value : "")] = el.type === "checkbox" || el.type === "radio" ? el.checked : el.value;
+  }
+}
+function restoreDrafts(route) {
+  for (const f of $$("form[data-keep]", $("#view"))) {
+    const d = drafts[route + "|" + f.id]; if (!d) continue;
+    for (const el of f.elements) {
+      if (!el.name) continue;
+      const k = el.name + (el.type === "radio" ? "=" + el.value : "");
+      if (!(k in d)) continue;
+      if (el.type === "checkbox" || el.type === "radio") el.checked = d[k]; else el.value = d[k];
+    }
+  }
+}
+function clearDrafts(formId) { for (const k of Object.keys(drafts)) if (!formId || k.endsWith("|" + formId)) delete drafts[k]; }
 
 /* ---------------- routing ---------------- */
 function parseRoute() {
@@ -1983,7 +2057,7 @@ Inputs["co"] = el => {
 };
 
 /* ---- pages/employee.js ---- */
-/* pages/employee.js: order board, till, sold-out toggles (docs/PRD.md Employee features). Admins can use these too. */
+/* pages/employee.js: order board and sold-out toggles (docs/PRD.md Employee features). The till is admin-only; admins use these pages too. */
 
 const ex = { till: [], tillMethod: "cash", airtime: "", boardCol: "received", soQ: "" };
 
@@ -2054,8 +2128,8 @@ function employeeSoldOut() {
 }
 
 const EmployeeArea = {
-  nav: [["board", "Orders"], ["till", "Till"], ["soldout", "Sold out"]],
-  render(page) { return page === "till" ? employeeTill() : page === "soldout" ? employeeSoldOut() : employeeBoard(); },
+  nav: [["board", "Orders"], ["soldout", "Sold out"]],
+  render(page) { return page === "soldout" ? employeeSoldOut() : employeeBoard(); },
   after() {},
   badge(page) { return page === "board" ? store.list("orders", o => o.status === "received").length : 0; },
 };
@@ -2608,28 +2682,42 @@ async function saveItemEditor() {
 }
 
 /* ---------------- people, platters, settings, log ---------------- */
-function adminPeople() {
-  const users = store.list("users"), staff = users.filter(u => u.role !== "customer").sort((a, b) => a.role.localeCompare(b.role)), custs = users.filter(u => u.role === "customer");
-  return `<h1>People</h1>
-  <div class="card"><div class="row between"><span class="label">Staff</span><button class="btn primary sm" data-act="staff-new">+ Add employee or driver</button></div>
-  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Username</th><th>Phone</th><th>Last sign-in</th><th><span class="sr">Actions</span></th></tr></thead><tbody>${staff.map(u => `<tr>
-    <td>${esc(u.displayName)} ${u.active ? "" : `<span class="tag t-red">Off</span>`}${u.mustChangeSecret ? ` <span class="tag t-warn">New password pending</span>` : ""}</td><td>${esc(u.role)}</td><td>@${esc(u.username)}</td><td class="num">${esc(formatPhone(u.phone))}</td><td class="small">${u.lastLoginAt ? esc(fmtWhen(u.lastLoginAt)) : "never"}</td>
-    <td class="n">${u.role === "admin" ? "" : `<button class="btn sm" data-act="staff-reset" data-id="${u.id}">Reset password</button> <button class="btn sm ${u.active ? "danger" : "good"}" data-act="staff-active" data-id="${u.id}" data-v="${u.active ? "0" : "1"}">${u.active ? "Deactivate" : "Activate"}</button>`}</td></tr>`).join("")}</tbody></table></div></div>
+function adminUsers() {
+  const users = store.list("users"), staff = users.filter(u => u.role !== "customer").sort((a, b) => a.role.localeCompare(b.role) || a.displayName.localeCompare(b.displayName)), custs = users.filter(u => u.role === "customer");
+  const role = ax.newRole || "employee";
+  return `<h1>Users</h1>
+  <form class="card" id="staffform" data-keep autocomplete="off"><span class="label">Add a new ${role === "driver" ? "driver" : "employee"}</span>
+    <div class="seg" role="group" aria-label="Role"><button type="button" data-act="new-role" data-id="employee" aria-pressed="${role === "employee"}">Employee</button><button type="button" data-act="new-role" data-id="driver" aria-pressed="${role === "driver"}">Driver</button></div>
+    <div class="steps2">
+      <div class="step"><span class="label">1 · Admin fills in</span>
+        <div class="field"><label for="sn">Full name</label><input id="sn" name="displayName" type="text" autocomplete="off" required></div>
+        <div class="field"><label for="sp">Cellphone number (they sign in with it)</label><input id="sp" name="phone" type="tel" inputmode="tel" placeholder="071 234 5678" autocomplete="off" required></div></div>
+      <div class="step"><span class="label">2 · Hand the phone over: they choose a password</span>
+        <div class="field"><label for="sw1">Password</label><input id="sw1" name="password" type="password" autocomplete="new-password" required></div>
+        <div class="field"><label for="sw2">Type it again</label><input id="sw2" name="password2" type="password" autocomplete="new-password" required></div>
+        <label class="row small"><input type="checkbox" data-act-change="show-pw"> Show password</label>
+        <p class="tiny muted">At least 10 characters, with letters and numbers. Only they should know it.</p></div>
+    </div>
+    <p class="err" id="sterr" role="alert"></p>
+    <button class="btn primary" style="align-self:flex-start">Save ${role === "driver" ? "driver" : "employee"}</button></form>
+  <div class="card"><span class="label">Staff (${staff.length})</span>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Sign-in phone</th><th>Last sign-in</th><th><span class="sr">Actions</span></th></tr></thead><tbody>${staff.map(u => `<tr>
+    <td>${esc(u.displayName)}</td><td>${esc(ROLE_LABEL[u.role])}</td><td class="num">${esc(formatPhone(u.phone))}</td><td class="small">${u.lastLoginAt ? esc(fmtWhen(u.lastLoginAt)) : "never"}</td>
+    <td class="n">${u.role === "admin" ? "" : `<span class="row" style="justify-content:flex-end"><button class="btn sm" data-act="staff-reset" data-id="${u.id}">New password</button><button class="btn sm danger" data-act="staff-delete" data-id="${u.id}">Delete</button></span>`}</td></tr>`).join("")}</tbody></table></div></div>
   <div class="card"><span class="label">Customers (${custs.length})</span><div class="tbl-wrap"><table class="tbl"><thead><tr><th><span class="sr">Avatar</span></th><th>Name</th><th>Phone</th><th class="n">Orders</th></tr></thead><tbody>${custs.map(u => `<tr><td>${avatarSvg(u.avatar, 30)}</td><td>${esc(u.displayName)} <span class="tiny muted">@${esc(u.username)}</span></td><td class="num">${esc(formatPhone(u.phone))}</td><td class="n">${store.list("orders", o => o.customerId === u.id).length}</td></tr>`).join("")}</tbody></table></div></div>`;
 }
 
-function openStaffForm() {
-  const panel = openSheet(`<h2>Add a staff member</h2><form id="stform" class="stack">
-    <div class="grid2"><div class="field"><label for="sr">Role</label><select id="sr" name="role"><option value="employee">Employee</option><option value="driver">Driver</option></select></div>
-    <div class="field"><label for="sn">Full name</label><input id="sn" name="displayName" type="text" required></div>
-    <div class="field"><label for="su">Username</label><input id="su" name="username" type="text" autocomplete="off" required></div>
-    <div class="field"><label for="sp">Cellphone (for sign-in and order alerts)</label><input id="sp" name="phone" type="tel" inputmode="tel" required></div></div>
-    <div class="field"><label for="st">Temporary password (they change it at first sign-in)</label><input id="st" name="password" type="text" autocomplete="off" required></div>
-    <p class="small muted">At least 10 characters with letters and numbers. Give it to them in person.</p><p class="err" id="sterr"></p><button class="btn primary">Create account</button></form>`);
-  panel.querySelector("#stform").addEventListener("submit", async ev => {
+function afterUsers() {
+  $("#staffform").addEventListener("submit", async ev => {
     ev.preventDefault();
-    const r = await createStaff(store, formData(ev.target));
-    if (r.ok) { closeSheet(); toast(`${r.user.displayName} can now sign in as ${r.user.role}.`); } else $("#sterr").textContent = r.error;
+    const btn = ev.target.querySelector("button.primary"); btn.disabled = true;
+    try {
+      const r = await createStaff(store, { ...formData(ev.target), role: ax.newRole || "employee" });
+      if (!r.ok) { $("#sterr").textContent = r.error; return; }
+      clearDrafts("staffform"); ev.target.reset(); $("#sterr").textContent = "";
+      toast(`Saved. ${r.user.displayName} signs in as ${ROLE_LABEL[r.user.role].toLowerCase()} with ${formatPhone(r.user.phone)} and their password.`);
+    } catch (e) { $("#sterr").textContent = e.userMessage || e.message; }
+    finally { btn.disabled = false; }
   });
 }
 
@@ -2650,6 +2738,10 @@ function adminSettings() {
     <div class="field"><label for="s-near">"Driver nearby" alert distance (m)</label><input id="s-near" name="near" type="number" min="50" value="${s.nearMeters}"></div>
     <div class="field"><label for="s-arr">"Driver arrived" distance (m)</label><input id="s-arr" name="arrived" type="number" min="10" value="${s.arrivedMeters}"></div>
     <div class="field"><label for="s-rem">Re-alert unanswered orders every (minutes)</label><input id="s-rem" name="remind" type="number" min="1" value="${s.notify.remindEveryMin}"></div></div>
+    <fieldset class="stack" style="border:1px solid var(--line);border-radius:12px;padding:12px;margin:0"><legend class="label" style="padding:0 6px">Admin sign-in code goes to (up to 3 owners)</legend>
+      ${[0, 1, 2].map(k => { const x = adminPhones(s)[k] || {}; return `<div class="grid2"><div class="field"><label for="ap-n${k}">Owner ${k + 1} name</label><input id="ap-n${k}" name="apName${k}" type="text" maxlength="30" value="${esc(x.name || "")}"></div>
+        <div class="field"><label for="ap-p${k}">Owner ${k + 1} cellphone</label><input id="ap-p${k}" name="apPhone${k}" type="tel" inputmode="tel" value="${esc(x.phone ? formatPhone(x.phone) : "")}"></div></div>`; }).join("")}
+      <p class="tiny muted">The 6-digit admin code can only be sent to these numbers. At least one is needed.</p></fieldset>
     <label class="row"><input type="checkbox" name="demoIgnoreHours" ${s.demoIgnoreHours ? "checked" : ""}> Demo: allow orders outside opening hours</label>
     <p class="err" id="seterr"></p><button class="btn primary" style="align-self:flex-start">Save settings</button></form>
   <div class="card"><span class="label">Demo data</span><p class="muted small">Puts back the original menu, stock, demo accounts and sample orders on this device. Everything done on this device is erased.</p>
@@ -2663,9 +2755,18 @@ function afterSettings() {
     if (fee == null) { $("#seterr").textContent = "Delivery fee must look like 5.00."; return; }
     if (!phone) { $("#seterr").textContent = "Enter a valid shop cellphone number."; return; }
     if (!(Number(f.arrived) < Number(f.near))) { $("#seterr").textContent = "The arrived distance must be smaller than the nearby distance."; return; }
+    const owners = [];
+    for (const k of [0, 1, 2]) {
+      const n = String(f["apName" + k] || "").trim(), raw = String(f["apPhone" + k] || "").trim();
+      if (!raw) continue;
+      const ph = normalizePhone(raw);
+      if (!ph) { $("#seterr").textContent = `Owner ${k + 1}'s cellphone number isn't valid.`; return; }
+      owners.push({ name: n || `Owner ${k + 1}`, phone: ph });
+    }
+    if (!owners.length) { $("#seterr").textContent = "Add at least one owner number for the admin sign-in code."; return; }
     requireRole(store, "admin");
     await store.transaction(tx => { const s = tx.get("settings", "shop"); tx.put("settings", { ...s, deliveryFee: fee, openTime: f.openTime, closeTime: f.closeTime, nearMeters: Number(f.near), arrivedMeters: Number(f.arrived),
-      demoIgnoreHours: !!f.demoIgnoreHours, notify: { ...s.notify, shopPhone: phone, remindEveryMin: Math.max(1, Number(f.remind) || 2) } }); });
+      demoIgnoreHours: !!f.demoIgnoreHours, adminPhones: owners, notify: { ...s.notify, shopPhone: phone, remindEveryMin: Math.max(1, Number(f.remind) || 2) } }); });
     toast("Settings saved");
   });
 }
@@ -2692,13 +2793,13 @@ function adminOrders() {
 }
 
 const AdminArea = {
-  nav: [["board", "Orders"], ["all", "All orders"], ["stock", "Stock"], ["accounting", "Accounting"], ["menu", "Menu"], ["people", "People"], ["platters", "Platters"], ["log", "Alerts log"], ["settings", "Settings"], ["till", "Till"]],
+  nav: [["board", "Orders"], ["all", "All orders"], ["stock", "Stock"], ["accounting", "Accounting"], ["menu", "Menu"], ["users", "Users"], ["platters", "Platters"], ["log", "Alerts log"], ["settings", "Settings"], ["till", "Till"]],
   render(page) {
-    const p = { stock: adminStock, accounting: adminAccounting, menu: adminMenu, people: adminPeople, platters: adminPlatters, settings: adminSettings, log: adminLog, all: adminOrders,
+    const p = { stock: adminStock, accounting: adminAccounting, menu: adminMenu, users: adminUsers, people: adminUsers, platters: adminPlatters, settings: adminSettings, log: adminLog, all: adminOrders,
       till: employeeTill, soldout: employeeSoldOut }[page];
     return p ? p() : employeeBoard();
   },
-  after(page) { if (page === "settings") afterSettings(); },
+  after(page) { if (page === "settings") afterSettings(); if (page === "users" || page === "people") afterUsers(); },
   badge(page) {
     if (page === "board") return store.list("orders", o => o.status === "received").length;
     if (page === "platters") return store.list("platterRequests", p => p.status === "new").length;
@@ -2745,14 +2846,23 @@ Actions["sec-new"] = () => {
 Actions["item-new"] = b => openItemEditor(null, b.dataset.id);
 Actions["item-edit"] = b => openItemEditor(b.dataset.id);
 Actions["item-hide"] = async b => { requireRole(store, "admin"); await store.transaction(tx => { const i = tx.get("menuItems", b.dataset.id); i.hidden = !i.hidden; tx.put("menuItems", i); }); };
-Actions["staff-new"] = () => openStaffForm();
+Actions["new-role"] = b => { ax.newRole = b.dataset.id; renderApp(); };
+Changes["show-pw"] = b => { const f = b.closest("form"); $$("input[type=password],input[data-pw]", f).forEach(i => { i.dataset.pw = "1"; i.type = b.checked ? "text" : "password"; }); };
 Actions["staff-reset"] = b => {
   const u = store.get("users", b.dataset.id);
-  const panel = openSheet(`<h2>Reset ${esc(u.displayName)}'s password</h2><form id="rsform" class="stack"><div class="field"><label for="rst">Temporary password</label><input id="rst" name="pw" type="text" autocomplete="off" required></div>
-    <p class="small muted">They'll be asked to choose a new one when they sign in.</p><p class="err" id="rserr"></p><button class="btn primary">Reset password</button></form>`);
-  panel.querySelector("#rsform").addEventListener("submit", async ev => { ev.preventDefault(); const r = await resetStaffSecret(store, u.id, formData(ev.target).pw); if (r.ok) { closeSheet(); toast("Password reset"); } else $("#rserr").textContent = r.error; });
+  const panel = openSheet(`<h2>New password for ${esc(u.displayName)}</h2><form id="rsform" class="stack" autocomplete="off"><p class="muted">Hand the phone to ${esc(u.displayName)} so they can type a new password.</p>
+    <div class="field"><label for="rs1">New password</label><input id="rs1" name="pw" type="password" autocomplete="new-password" required></div>
+    <div class="field"><label for="rs2">Type it again</label><input id="rs2" name="pw2" type="password" autocomplete="new-password" required></div>
+    <label class="row small"><input type="checkbox" data-act-change="show-pw"> Show password</label>
+    <p class="tiny muted">At least 10 characters, with letters and numbers.</p><p class="err" id="rserr" role="alert"></p><button class="btn primary">Save password</button></form>`);
+  panel.querySelector("#rsform").addEventListener("submit", async ev => { ev.preventDefault(); const f = formData(ev.target); const r = await resetStaffSecret(store, u.id, f.pw, f.pw2); if (r.ok) { closeSheet(); toast("Password saved"); } else $("#rserr").textContent = r.error; });
 };
-Actions["staff-active"] = async b => { if (b.dataset.v === "0" && !confirmTap(b, "Tap again to deactivate")) return; await setUserActive(store, b.dataset.id, b.dataset.v === "1"); toast(b.dataset.v === "1" ? "Account activated" : "Account deactivated: they're signed out on their next action"); };
+Actions["staff-delete"] = async b => {
+  const u = store.get("users", b.dataset.id); if (!u) return;
+  if (!confirmTap(b, "Tap again to delete")) return;
+  const r = await deleteStaff(store, u.id);
+  toast(r.ok ? `${u.displayName} was deleted and can't sign in any more.` : r.error);
+};
 Actions["cancel-order"] = b => {
   const o = store.get("orders", b.dataset.id);
   const panel = openSheet(`<h2>Cancel ${esc(o.number)}?</h2><form id="cxform" class="stack"><div class="field"><label for="cxr">Reason (the customer sees it)</label><input id="cxr" name="reason" type="text" required placeholder="e.g. Customer asked to cancel"></div>
@@ -2779,7 +2889,7 @@ const AREA_ROLE = { c: "customer", e: "employee", d: "driver", a: "admin" };
 const AREAS = { c: CustomerArea, e: EmployeeArea, d: DriverArea, a: AdminArea };
 const ROLE_LABEL = { customer: "Customer", employee: "Employee", driver: "Driver", admin: "Administrator" };
 const HOME = { customer: "#/c/menu", employee: "#/e/board", driver: "#/d/list", admin: "#/a/board" };
-const lx = { tab: "signin", avatar: 1, error: "", pending: null, busy: false, totp: "" };
+const lx = { tab: "signin", avatar: 1, error: "", pending: null, busy: false, sms: null, phoneIdx: 0 };
 let seenNotes = new Set(), renderQueued = false, deferred = false;
 
 /* ---------------- header & footer ---------------- */
@@ -2810,15 +2920,15 @@ function startScreen() {
     <div class="facts"><span>Open ${esc(s.openTime)}–${esc(s.closeTime)}</span><span>Next to Univen Gate</span><span>Kota Level 1 from ${money(1900)}</span></div>
     <div class="row" style="margin-top:16px"><button class="btn primary" data-act="to-login" data-id="customer">Order now</button></div></section>
   <h2>Sign in as</h2>
-  <div class="roles">${roleBtn("customer", "🍔", "Order food and track it")}${roleBtn("employee", "🧑‍🍳", "Order board, till, sold-out")}${roleBtn("driver", "🛵", "Your deliveries and map")}${roleBtn("admin", "📊", "Stock, money, menu, staff")}</div>
+  <div class="roles">${roleBtn("customer", "🍔", "Order food and track it")}${roleBtn("employee", "🧑‍🍳", "Order board and sold-out")}${roleBtn("driver", "🛵", "Your deliveries and map")}${roleBtn("admin", "📊", "Stock, money, menu, staff")}</div>
   <section class="demo"><div class="row between"><h3>Trying the demo?</h3><span class="tag t-orange">Demo</span></div>
     <p class="small">Open each role in its own browser tab on this phone or computer, then place an order as the customer and watch it move live through the kitchen, the driver and the owner's books.</p>
     <div class="row">${["customer", "employee", "driver", "admin"].map(r => `<a class="btn sm" href="#/login/${r}" target="_blank" rel="noopener">Open ${ROLE_LABEL[r]} tab ↗</a>`).join("")}</div>
     <div class="tbl-wrap" style="border:0"><table><tbody>
       <tr><td><b>Customer</b></td><td>username <span class="code">${esc(cust.username)}</span> · phone <span class="code">${esc(formatPhone(cust.phone))}</span> · PIN <span class="code">${esc(cust.demoPin)}</span> (or create your own)</td></tr>
-      <tr><td><b>Employee</b></td><td><span class="code">${esc(emp.username)}</span> · phone <span class="code">${esc(formatPhone(emp.phone))}</span> · password <span class="code">${esc(emp.demoSecret)}</span></td></tr>
-      <tr><td><b>Driver</b></td><td><span class="code">${esc(drv.username)}</span> · password <span class="code">${esc(drv.demoSecret)}</span></td></tr>
-      <tr><td><b>Admin</b></td><td><span class="code">${esc(adm.username)}</span> · password <span class="code">${esc(adm.demoSecret)}</span> · code <span class="code" id="democode">${esc(lx.totp || "······")}</span> <span class="tiny muted">(changes every 30 s)</span></td></tr>
+      <tr><td><b>Employee</b></td><td>phone <span class="code">${esc(formatPhone(emp.phone))}</span> · password <span class="code">${esc(emp.demoSecret)}</span></td></tr>
+      <tr><td><b>Driver</b></td><td>phone <span class="code">${esc(formatPhone(drv.phone))}</span> · password <span class="code">${esc(drv.demoSecret)}</span></td></tr>
+      <tr><td><b>Admin</b></td><td><span class="code">${esc(adm.username)}</span> · password <span class="code">${esc(adm.demoSecret)}</span> · then a 6-digit SMS code (shown on screen in the demo)</td></tr>
     </tbody></table></div>
     <p class="tiny muted">These demo passwords are public on purpose. Don't use a real password anywhere in this demo.</p></section>
   <div class="card"><span class="label">Contact Mandiba</span><p>WhatsApp <b class="num">071 530 6634</b> · Calls <b class="num">082 586 5126</b> / <b class="num">072 853 2136</b> · Facebook & TikTok <b>@Mandiba_spaza_shop</b></p></div>`;
@@ -2833,25 +2943,41 @@ function demoCreds(role) {
 
 function loginScreen(role) {
   if (!ROLE_LABEL[role]) { setTimeout(() => go("#/"), 0); return ""; }
-  const withPhone = role === "customer" || role === "employee", isCust = role === "customer";
-  if (lx.pending) return `<form class="card auth" id="codeform"><h1 class="h2">Administrator: second check</h1>
-    <p class="muted">Enter the 6-digit code from your authenticator app.</p><p class="note small">Demo: the current code is on the start page (it changes every 30 seconds).</p>
-    <div class="field"><label for="code">6-digit code</label><input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>
-    ${lx.error ? `<p class="err">${esc(lx.error)}</p>` : ""}<button class="btn primary block" ${lx.busy ? "disabled" : ""}>Verify</button>
-    <button type="button" class="link small" data-act="code-cancel" style="align-self:center">Back to password</button></form>`;
+  const isCust = role === "customer", isStaff = role === "employee" || role === "driver";
+  if (lx.pending) return adminCodeScreen();
   const signup = isCust && lx.tab === "signup";
-  return `<form class="card auth" id="loginform" autocomplete="off">
+  return `<form class="card auth" id="loginform" autocomplete="off" data-keep>
     <div class="row between"><h1 class="h2">${ROLE_LABEL[role]} ${signup ? "sign-up" : "sign-in"}</h1><a class="small" href="#/">Change role</a></div>
     ${isCust ? `<div class="seg"><button type="button" data-act="login-tab" data-id="signin" aria-pressed="${!signup}">Sign in</button><button type="button" data-act="login-tab" data-id="signup" aria-pressed="${signup}">Create account</button></div>` : ""}
     ${signup ? `<div class="field"><label for="dn">Your name</label><input id="dn" name="displayName" type="text" maxlength="30" required></div>` : ""}
-    <div class="field"><label for="un">Username</label><input id="un" name="username" type="text" autocapitalize="none" autocomplete="username" required></div>
-    ${withPhone ? `<div class="field"><label for="ph">Cellphone number</label><input id="ph" name="phone" type="tel" inputmode="tel" placeholder="071 234 5678" autocomplete="tel" required></div>` : ""}
+    ${isStaff ? "" : `<div class="field"><label for="un">Username</label><input id="un" name="username" type="text" autocapitalize="none" autocomplete="username" required></div>`}
+    ${isCust || isStaff ? `<div class="field"><label for="ph">Cellphone number</label><input id="ph" name="phone" type="tel" inputmode="tel" placeholder="071 234 5678" autocomplete="tel" required></div>` : ""}
     <div class="field"><label for="pw">${isCust ? "4-digit PIN" : "Password"}</label><input id="pw" name="secret" type="password" ${isCust ? 'inputmode="numeric" maxlength="4"' : ""} autocomplete="${signup ? "new-password" : "current-password"}" required></div>
     ${signup ? `<div class="stack"><span class="label">Pick your avatar</span><div class="avpick">${Array.from({ length: 12 }, (_, k) => `<button type="button" data-act="pick-avatar" data-id="${k + 1}" aria-pressed="${lx.avatar === k + 1}" aria-label="Avatar ${k + 1}">${avatarSvg(k + 1, 44)}</button>`).join("")}</div></div>` : ""}
     ${lx.error ? `<p class="err" role="alert">${esc(lx.error)}</p>` : ""}
     <button class="btn primary block" ${lx.busy ? "disabled" : ""}>${lx.busy ? "Checking…" : signup ? "Create account" : "Sign in"}</button>
     ${signup ? "" : `<button type="button" class="link small" data-act="fill-demo" data-id="${role}" style="align-self:center">Fill in the demo ${ROLE_LABEL[role].toLowerCase()} details</button>`}
+    ${isStaff ? `<p class="small muted" style="text-align:center">New here? Your admin sets up your account with your number, and you choose your password on their phone.</p>` : ""}
     <p class="tiny muted" style="text-align:center">Demo: please don't use a real password.</p></form>`;
+}
+
+/* Admin second check: pick one of the owners' numbers, get a 6-digit SMS code, type it in. */
+function maskPhone(ph) { const f = formatPhone(ph); return f.slice(0, 3) + " ••• " + f.slice(-4); }
+function adminCodeScreen() {
+  const phones = adminPhones(settings());
+  if (!lx.sms) return `<form class="card auth" id="sendform" data-keep><h1 class="h2">Administrator: second check</h1>
+    <p class="muted">We'll SMS a 6-digit code to one of the owners' phones. Choose where to send it.</p>
+    <fieldset class="stack" style="border:0;padding:0;margin:0"><legend class="label">Send the code to</legend>
+    ${phones.map((x, k) => `<label class="opt row" style="gap:10px"><input type="radio" name="to" value="${k}" ${k === lx.phoneIdx ? "checked" : ""}> <span><b>${esc(x.name)}</b><br><span class="num muted">${esc(maskPhone(x.phone))}</span></span></label>`).join("")}</fieldset>
+    ${lx.error ? `<p class="err" role="alert">${esc(lx.error)}</p>` : ""}<button class="btn primary block">Send code</button>
+    <button type="button" class="link small" data-act="code-cancel" style="align-self:center">Back to password</button></form>`;
+  return `<form class="card auth" id="codeform" data-keep><h1 class="h2">Administrator: second check</h1>
+    <p class="muted">We sent a 6-digit code to <b class="num">${esc(maskPhone(lx.sms.phone))}</b>. It works for ${lx.sms.minutes} minutes.</p>
+    <div class="smsdemo" role="status"><span class="label">Demo: the SMS that was sent</span><p><b>Mandiba:</b> Your admin sign-in code is <b class="num code">${esc(lx.sms.demoCode)}</b>. Don't share it with anyone.</p></div>
+    <div class="field"><label for="code">6-digit code</label><input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>
+    ${lx.error ? `<p class="err" role="alert">${esc(lx.error)}</p>` : ""}<button class="btn primary block" ${lx.busy ? "disabled" : ""}>Verify</button>
+    <button type="button" class="link small" data-act="code-resend" style="align-self:center">Send a new code or use another number</button>
+    <button type="button" class="link small" data-act="code-cancel" style="align-self:center">Back to password</button></form>`;
 }
 
 function afterLogin(role) {
@@ -2868,22 +2994,32 @@ function afterLogin(role) {
     } catch (e) { r = { ok: false, error: e.userMessage || e.message }; }
     lx.busy = false;
     if (!r.ok) { lx.error = r.error; renderApp(); return; }
-    if (r.needCode) { lx.pending = r.pendingId; lx.error = ""; renderApp(); return; }
+    if (r.needCode) { lx.pending = r.pendingId; lx.sms = null; lx.error = ""; clearDrafts("loginform"); renderApp(); return; }
     signedIn(r);
+  });
+  const sf = $("#sendform");
+  if (sf) sf.addEventListener("submit", ev => {
+    ev.preventDefault();
+    lx.phoneIdx = Number(($("input[name=to]:checked", sf) || {}).value || 0);
+    const r = sendAdminCode(store, lx.pending, lx.phoneIdx);
+    if (!r.ok) { lx.error = r.error; if (r.restart) lx.pending = null; renderApp(); return; }
+    lx.sms = r; lx.error = ""; clearDrafts("codeform"); renderApp();
+    const c = $("#code"); if (c) c.focus();
   });
   const cf = $("#codeform");
   if (cf) cf.addEventListener("submit", async ev => {
     ev.preventDefault();
+    const code = formData(cf).code;
     lx.busy = true; renderApp();
-    const r = await verifyAdminCode(store, lx.pending, formData(cf).code);
+    const r = await verifyAdminCode(store, lx.pending, code);
     lx.busy = false;
-    if (!r.ok) { lx.error = r.error; if (r.restart) lx.pending = null; renderApp(); return; }
-    lx.pending = null; signedIn(r);
+    if (!r.ok) { lx.error = r.error; if (r.restart) { lx.pending = null; lx.sms = null; } if (r.expired) lx.sms = null; renderApp(); return; }
+    lx.pending = null; lx.sms = null; signedIn(r);
   });
 }
 
 function signedIn(r) {
-  App.user = r.user; lx.error = ""; lx.tab = "signin";
+  App.user = r.user; lx.error = ""; lx.tab = "signin"; clearDrafts();
   if (r.user.role === "customer") welcomeBanner(r.firstTime || !r.returning ? `Welcome to Mandiba, ${r.user.displayName}!` : `Sharp ${r.user.displayName}! Welcome back`);
   go(HOME[r.user.role]);
 }
@@ -2932,9 +3068,12 @@ function renderApp(opts = {}) {
     }
   } else { go("#/"); return; }
   renderBar(area, page);
+  const route = location.hash || "#/";
+  if (App.renderedRoute) saveDrafts(App.renderedRoute);
   $("#view").innerHTML = html;
   hideEmoji($("#view"));
   if (after) after();
+  restoreDrafts(route); App.renderedRoute = route;
   updateCartBar();
   if (focus) {
     const sel = `[data-input="${focus.input}"]` + (focus.k ? `[data-k="${focus.k}"]` : "") + (focus.id ? `[data-id="${focus.id}"]` : "");
@@ -2954,7 +3093,10 @@ function scheduleRender() {
   renderQueued = true;
   // Background tabs get no animation frames, so they redraw on a timer and stay current (e.g. a board left open behind another tab).
   const run = () => renderApp({ keepFocus: true });
-  if (document.hidden) setTimeout(run, 60); else requestAnimationFrame(run);
+  // Some embedded browsers pause animation frames while still reporting "visible", so a timer backs the frame up.
+  if (document.hidden) { setTimeout(run, 60); return; }
+  let done = false; const once = () => { if (!done) { done = true; run(); } };
+  requestAnimationFrame(once); setTimeout(once, 250);
 }
 
 /* ---------------- live alerts ---------------- */
@@ -3003,12 +3145,13 @@ document.addEventListener("keydown", ev => { if (ev.key === "Tab" && sheetOpen()
 document.addEventListener("visibilitychange", () => { if (!document.hidden && App.booted) scheduleRender(); });
 window.addEventListener("hashchange", () => { if (sheetOpen()) closeSheet(); if (dx.fullId) closeDriverFull(); lx.error = ""; window.scrollTo(0, 0); renderApp(); });
 
-Actions["signout"] = () => { signOut(); App.user = null; lx.pending = null; go("#/"); };
+Actions["signout"] = () => { signOut(); App.user = null; lx.pending = null; lx.sms = null; clearDrafts(); App.renderedRoute = null; go("#/"); };
 Actions["to-login"] = b => go("#/login/" + b.dataset.id);
 Actions["login-tab"] = b => { lx.tab = b.dataset.id; lx.error = ""; renderApp(); };
 Actions["pick-avatar"] = b => { lx.avatar = Number(b.dataset.id); $$(".avpick button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); };
-Actions["fill-demo"] = b => { const c = demoCreds(b.dataset.id), f = $("#loginform"); f.username.value = c.username; if (f.phone) f.phone.value = c.phone; f.secret.value = c.secret; };
-Actions["code-cancel"] = () => { lx.pending = null; lx.error = ""; renderApp(); };
+Actions["fill-demo"] = b => { const c = demoCreds(b.dataset.id), f = $("#loginform"); if (f.username) f.username.value = c.username; if (f.phone) f.phone.value = c.phone; f.secret.value = c.secret; };
+Actions["code-cancel"] = () => { lx.pending = null; lx.sms = null; lx.error = ""; renderApp(); };
+Actions["code-resend"] = () => { lx.sms = null; lx.error = ""; renderApp(); };
 Actions["theme"] = () => { const order = ["auto", "light", "dark"]; applyTheme(order[(order.indexOf(themeName()) + 1) % 3]); renderApp(); };
 Actions["notify-perm"] = async () => {
   if (!("Notification" in window)) { toast("This browser doesn't support notifications. On-screen alerts still work."); return; }
@@ -3018,12 +3161,6 @@ Actions["notify-perm"] = async () => {
 };
 
 /* ---------------- boot ---------------- */
-async function tickDemoCode() {
-  const adm = SEED.demo.staff.find(x => x.role === "admin");
-  try { lx.totp = await totp(adm.totpSecret, Date.now()); } catch (e) { lx.totp = ""; }
-  const el = $("#democode"); if (el) el.textContent = lx.totp;
-}
-
 async function boot() {
   try { const t = localStorage.getItem("mandiba.theme"); if (t && t !== "auto") applyTheme(t); } catch (e) { /* optional */ }
   if (!isSeeded(store)) {
@@ -3037,7 +3174,6 @@ async function boot() {
   App.booted = true;
   renderApp();
   setTimeout(handleNotifications, 600);
-  tickDemoCode(); setInterval(tickDemoCode, 5000);
   setInterval(() => { runReminders().catch(() => {}); }, 30000);
   setInterval(() => { if (!document.hidden) scheduleRender(); }, 60000);
 }
