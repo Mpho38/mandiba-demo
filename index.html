@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-KJ+fXMfkR0sfQLrYD9HAP/aMgfJ0sVvzDgH0j2hoNuA=' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://cdnjs.cloudflare.com; connect-src 'self' data: blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'sha256-t9w1K0T6b4heZMrLU2CO39p3h+NW7sq3EWPqsnFkOsg=' 'wasm-unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://cdnjs.cloudflare.com; connect-src 'self' data: blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Mandiba Spaza Shop</title>
@@ -439,7 +439,7 @@ if (typeof module !== "undefined" && module.exports) module.exports = { distance
    Writes that must be all-or-nothing go through transaction(), which holds a cross-tab lock. */
 
 function createLocalStore(prefix = "mandiba.v1.") {
-  const cache = {}, subs = {};
+  const cache = {}, subs = {}, raws = {};
   let memoryOnly = false, probed = null;
   const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("mandiba") : null;
   const tabId = Math.random().toString(36).slice(2);
@@ -457,7 +457,7 @@ function createLocalStore(prefix = "mandiba.v1.") {
     if (!fresh && cache[coll]) return cache[coll];
     const ls = storage();
     let data = cache[coll] || {};
-    if (ls) { try { const raw = ls.getItem(prefix + coll); data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; } }
+    if (ls) { try { const raw = ls.getItem(prefix + coll); raws[coll] = raw; data = raw ? JSON.parse(raw) : {}; } catch (e) { data = {}; } }
     cache[coll] = data;
     return data;
   }
@@ -466,7 +466,7 @@ function createLocalStore(prefix = "mandiba.v1.") {
     const ls = storage();
     if (!ls) return;
     for (const c of colls) {
-      try { ls.setItem(prefix + c, JSON.stringify(cache[c] || {})); }
+      try { const raw = JSON.stringify(cache[c] || {}); ls.setItem(prefix + c, raw); raws[c] = raw; }
       catch (e) {
         const quota = e && (e.name === "QuotaExceededError" || e.code === 22);
         const err = new Error(quota ? "Storage is full: remove old slip photos or recordings, or reset the demo." : "Couldn't save: " + e.message);
@@ -484,16 +484,17 @@ function createLocalStore(prefix = "mandiba.v1.") {
     if (channel) channel.postMessage({ colls, from: tabId });
   }
 
-  /* Other tabs' writes arrive by BroadcastChannel; the "storage" event is only a fallback when that isn't available. */
+  /* Other tabs' writes arrive by BroadcastChannel (fast). The message can arrive before the write is visible in this
+     tab's localStorage, so the "storage" event (fired once it is visible) re-reads any collection that still differs. */
   if (channel) channel.onmessage = ev => {
     const colls = ((ev.data && ev.data.colls) || []).filter(c => ALL_COLLECTIONS.includes(c));
     for (const c of colls) load(c, true);
     if (colls.length) notify(colls, true);
   };
-  else if (typeof window !== "undefined") window.addEventListener("storage", ev => {
+  if (typeof window !== "undefined") window.addEventListener("storage", ev => {
     if (!ev.key || !ev.key.startsWith(prefix)) return;
     const c = ev.key.slice(prefix.length);
-    if (!ALL_COLLECTIONS.includes(c)) return;
+    if (!ALL_COLLECTIONS.includes(c) || ev.newValue === raws[c]) return; // already read via the channel
     load(c, true);
     notify([c], true);
   });
